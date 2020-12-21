@@ -51,6 +51,8 @@ export async function createMqttSyncWorker<T>(store: Store<T>, options: MqttSync
 
         if (CLIENT_OBJECT_SYNC_REGEX.test(topic)) {
             client.unsubscribe(`client/${clientId}/object/${data.id}/sync`);
+            client.subscribe(`object/${data.id}/changes`);
+            client.subscribe(`object/${data.id}/sync`);
             tryGet(() => store.events.emit("objectLoaded", {
                 id: data.id,
                 stateSave: data.stateSave,

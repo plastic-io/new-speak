@@ -20,7 +20,7 @@ export async function createMqttCacheWorker<T>(store: Store<T>, options: MqttSyn
     const cert = (await fs.readFile("./certs/cert.crt", "utf-8"));
     const key = (await fs.readFile("./certs/private.key", "utf-8"));
 
-    const client = mqtt.connect("IOT_SERVER_NAME", {
+    const client = mqtt.connect("mqtt://a1tgmnye9kxelo-ats.iot.us-west-2.amazonaws.com", {
         ca: ca,
         cert: cert,
         key: key,
@@ -69,6 +69,8 @@ export async function createMqttCacheWorker<T>(store: Store<T>, options: MqttSyn
 
         if (CLIENT_OBJECT_SYNC_REGEX.test(topic)) {
             client.unsubscribe(`client/${clientId}/object/${data.id}/sync`);
+            client.subscribe(`object/${data.id}/changes`);
+            client.subscribe(`object/${data.id}/sync`);
             tryGet(() => store.events.emit("objectLoaded", {
                 id: data.id,
                 stateSave: data.stateSave,
