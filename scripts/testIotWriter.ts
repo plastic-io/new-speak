@@ -2,6 +2,7 @@ import * as store from "../src/store";
 import { createMqttSyncWorker } from "../src/mqtt";
 import * as automerge from "automerge";
 import { sleep } from "../src/util";
+import * as fs from "fs/promises";
 
 export interface State {
     counter: automerge.Counter;
@@ -21,8 +22,21 @@ export function createStore() {
 }
 
 async function main() {
+    const ca = (await fs.readFile("./certs/ca.pem", "utf-8"));
+    const cert = (await fs.readFile("./certs/cert.crt", "utf-8"));
+    const key = (await fs.readFile("./certs/private.key", "utf-8"));
+
     const store = createStore();
-    const worker = await createMqttSyncWorker(store, {});
+    const worker = await createMqttSyncWorker(store, {
+        mqtt: {
+            url: "mqtt://a1tgmnye9kxelo-ats.iot.us-west-2.amazonaws.com",
+            options: {
+                ca,
+                cert,
+                key,
+            },
+        }
+    });
     // const s3Worker = await createS3PersistanceWorker(store, {});
 
     await worker.settled;

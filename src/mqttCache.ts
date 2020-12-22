@@ -1,13 +1,18 @@
 import * as automerge from "automerge";
 import { Store } from "./store";
 import * as mqtt from "mqtt";
-import * as fs from "fs/promises";
 import { externalPromise } from "./promise";
 import { getRandomFloat, tryGet } from "./util";
+import { STORE_OBJECT_LOAD_SUCCESSFUL } from "./constants";
 
-export interface MqttSyncOptions { };
+export interface MqttCacheOptions {
+    mqtt: {
+        url: string;
+        options?: mqtt.IClientOptions;
+    };
+};
 
-export async function createMqttCacheWorker<T>(store: Store<T>, options: MqttSyncOptions) {
+export async function createMqttCacheWorker<T>(store: Store<T>, options: MqttCacheOptions) {
     let cachePercentage = 100;
     const CLIENT_OBJECT_SYNC_REGEX = new RegExp(/^client\//.source + store.clientId + /\/object\/[\w-]+\/sync/.source);
     const OBJECT_SYNC_REGEX = /^object\/[\w-]+\/sync/;
@@ -16,14 +21,9 @@ export async function createMqttCacheWorker<T>(store: Store<T>, options: MqttSyn
 
     const settled = externalPromise();
     const clientId = store.clientId;
-    const ca = (await fs.readFile("./certs/ca.pem", "utf-8"));
-    const cert = (await fs.readFile("./certs/cert.crt", "utf-8"));
-    const key = (await fs.readFile("./certs/private.key", "utf-8"));
 
-    const client = mqtt.connect("mqtt://a1tgmnye9kxelo-ats.iot.us-west-2.amazonaws.com", {
-        ca: ca,
-        cert: cert,
-        key: key,
+    const client = mqtt.connect(options.mqtt.url, {
+        ...options.mqtt.options,
         clientId: clientId,
         clean: true,
     });
@@ -47,7 +47,7 @@ export async function createMqttCacheWorker<T>(store: Store<T>, options: MqttSyn
             const savePercentage = getRandomFloat(100);
             if (savePercentage > cachePercentage || cachePercentage === 0) return;
 
-            store.events.emit("objectLoaded", {
+            store.events.emit(STORE_OBJECT_LOAD_SUCCESSFUL, {
                 id: data.id,
                 stateSave: data.stateSave,
             });
@@ -71,7 +71,7 @@ export async function createMqttCacheWorker<T>(store: Store<T>, options: MqttSyn
             client.unsubscribe(`client/${clientId}/object/${data.id}/sync`);
             client.subscribe(`object/${data.id}/changes`);
             client.subscribe(`object/${data.id}/sync`);
-            tryGet(() => store.events.emit("objectLoaded", {
+            tryGet(() => store.events.emit(STORE_OBJECT_LOAD_SUCCESSFUL, {
                 id: data.id,
                 stateSave: data.stateSave,
                 overwrite: true,

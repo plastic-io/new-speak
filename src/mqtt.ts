@@ -1,11 +1,16 @@
 import * as automerge from "automerge";
 import { Store } from "./store";
 import * as mqtt from "mqtt";
-import * as fs from "fs/promises";
 import { externalPromise } from "./promise";
 import { tryGet } from "./util";
+import { STORE_LOAD_OBJECT, STORE_OBJECT_CHANGED, STORE_OBJECT_LOAD_SUCCESSFUL, STORE_CREATE_OBJECT } from "./constants";
 
-export interface MqttSyncOptions { };
+export interface MqttSyncOptions {
+    mqtt: {
+        url: string;
+        options?: mqtt.IClientOptions;
+    };
+};
 
 export async function createMqttSyncWorker<T>(store: Store<T>, options: MqttSyncOptions) {
     const CLIENT_OBJECT_SYNC_REGEX = new RegExp(/^client\//.source + store.clientId + /\/object\/[\w-]+\/sync/.source);
@@ -14,17 +19,13 @@ export async function createMqttSyncWorker<T>(store: Store<T>, options: MqttSync
 
     const settled = externalPromise();
     const clientId = store.clientId;
-    const ca = (await fs.readFile("./certs/ca.pem", "utf-8"));
-    const cert = (await fs.readFile("./certs/cert.crt", "utf-8"));
-    const key = (await fs.readFile("./certs/private.key", "utf-8"));
 
-    const client = mqtt.connect("mqtt://a1tgmnye9kxelo-ats.iot.us-west-2.amazonaws.com", {
-        ca: ca,
-        cert: cert,
-        key: key,
+    const client = mqtt.connect(options.mqtt.url, {
+        ...options.mqtt.options,
         clientId: clientId,
         clean: true,
     });
+
 
     client.on("error", function (err) {
         console.log(err);
@@ -53,7 +54,7 @@ export async function createMqttSyncWorker<T>(store: Store<T>, options: MqttSync
             client.unsubscribe(`client/${clientId}/object/${data.id}/sync`);
             client.subscribe(`object/${data.id}/changes`);
             client.subscribe(`object/${data.id}/sync`);
-            tryGet(() => store.events.emit("objectLoaded", {
+            tryGet(() => store.events.emit(STORE_OBJECT_LOAD_SUCCESSFUL, {
                 id: data.id,
                 stateSave: data.stateSave,
                 overwrite: false,
@@ -101,9 +102,9 @@ export async function createMqttSyncWorker<T>(store: Store<T>, options: MqttSync
         }));
     }
 
-    store.events.on("changes", processStoreChanges);
-    store.events.on("createObject", registerObjectCreation);
-    store.events.on("loadObject", loadObject);
+    store.events.on(STORE_OBJECT_CHANGED, processStoreChanges);
+    store.events.on(STORE_CREATE_OBJECT, registerObjectCreation);
+    store.events.on(STORE_LOAD_OBJECT, loadObject);
 
     return {
         settled: settled.promise,

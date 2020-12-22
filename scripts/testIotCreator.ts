@@ -1,6 +1,7 @@
 import * as store from "../src/store";
 import { createMqttSyncWorker } from "../src/mqtt";
 import * as automerge from "automerge";
+import * as fs from "fs/promises";
 
 const sleep = (timeout, returnValue?) => new Promise((resolve) => setTimeout(() => resolve(returnValue), timeout));
 
@@ -22,8 +23,21 @@ export function createStore(existingState?) {
 }
 
 async function main() {
+    const ca = (await fs.readFile("./certs/ca.pem", "utf-8"));
+    const cert = (await fs.readFile("./certs/cert.crt", "utf-8"));
+    const key = (await fs.readFile("./certs/private.key", "utf-8"));
+
     const store = createStore();
-    const worker = await createMqttSyncWorker(store, {});
+    const worker = await createMqttSyncWorker(store, {
+        mqtt: {
+            url: "mqtt://a1tgmnye9kxelo-ats.iot.us-west-2.amazonaws.com",
+            options: {
+                ca,
+                cert,
+                key,
+            },
+        }
+    });
     await worker.settled;
     await store.createObject("1", { counter: new automerge.Counter(0) });
     store.commit("1", "increment");

@@ -3,6 +3,7 @@ import * as events from "events";
 import { v4 as uuid } from "uuid";
 import { externalPromise, externalPromiseResolved } from "./promise";
 import { sleep } from "./util";
+import { STORE_LOAD_OBJECT, STORE_OBJECT_CHANGED, STORE_OBJECT_LOAD_FAILED, STORE_OBJECT_LOAD_SUCCESSFUL, STORE_CREATE_OBJECT } from "./constants";
 
 export interface StoreOptions<T = Record<string, any>> {
     clientId?: string;
@@ -26,7 +27,7 @@ export function createStore<T>(options: StoreOptions<T>): Store<T> {
     const eventBus = new events.EventEmitter();
     const objects = new Map<string, Record<string, any>>();
 
-    eventBus.on("objectLoaded", function ({ id, stateSave, overwrite }) {
+    eventBus.on(STORE_OBJECT_LOAD_SUCCESSFUL, function ({ id, stateSave, overwrite }) {
         const storeObj = objects.get(id);
         const loadedObject = Automerge.load(stateSave, options.clientId);
 
@@ -46,7 +47,7 @@ export function createStore<T>(options: StoreOptions<T>): Store<T> {
         });
     });
 
-    eventBus.on("objectLoadFailed", function ({ id, err }) {
+    eventBus.on(STORE_OBJECT_LOAD_FAILED, function ({ id, err }) {
         const storeObj = objects.get(id);
         if (!storeObj) throw new Error(`Object ${id} was not requested to be loaded`);
         if (storeObj.state.finished) throw new Error(`Object ${id} has already been resolved`);
@@ -70,7 +71,7 @@ export function createStore<T>(options: StoreOptions<T>): Store<T> {
         objects.set(id, {
             state: externalPromiseResolved(state),
         });
-        eventBus.emit("createObject", {
+        eventBus.emit(STORE_CREATE_OBJECT, {
             id,
             state,
         });
@@ -83,7 +84,7 @@ export function createStore<T>(options: StoreOptions<T>): Store<T> {
         objects.set(id, {
             state: loadPromise,
         });
-        eventBus.emit("loadObject", {
+        eventBus.emit(STORE_LOAD_OBJECT, {
             id,
         });
 
@@ -113,7 +114,7 @@ export function createStore<T>(options: StoreOptions<T>): Store<T> {
         });
 
         storeObj.state.value = state;
-        eventBus.emit("changes", {
+        eventBus.emit(STORE_OBJECT_CHANGED, {
             id,
             oldState,
             newState: state,

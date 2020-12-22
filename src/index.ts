@@ -1,19 +1,16 @@
-import * as Automerge from "automerge";
-import {createStore} from "./store";
+import { createStore } from "./store";
+import { createMqttSyncWorker } from "./mqtt";
+import { createMqttCacheWorker } from "./mqttCache";
 
-const store = createStore({
-    initialState: {
-        count: 0,
-    },
-    mutations: {
-        increment: (state) => {
-            state.count++;
-        },
-    },
-});
+// Keep export objects in sync
+export default {
+    createStore,
+    createMqttSyncWorker,
+    createMqttCacheWorker,
+};
 
-store.commit("increment");
-
-console.log(store.state);
-
-console.log(Automerge.getHistory(store.state));
+export {
+    createStore,
+    createMqttSyncWorker,
+    createMqttCacheWorker,
+};
