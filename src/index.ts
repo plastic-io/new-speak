@@ -1,16 +1,13 @@
 import { createStore } from "./store";
-import { createMqttSyncWorker } from "./mqtt";
-import { createMqttCacheWorker } from "./mqttCache";
+import { createMqttSyncWorker } from "./mqttSync";
 
 // Keep export objects in sync
 export default {
     createStore,
     createMqttSyncWorker,
-    createMqttCacheWorker,
 };
 
 export {
     createStore,
     createMqttSyncWorker,
-    createMqttCacheWorker,
 };

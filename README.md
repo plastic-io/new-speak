@@ -1,1 +1,1 @@
-# new-speak
+# @plastic-io/new-speak

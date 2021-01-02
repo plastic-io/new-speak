@@ -1,5 +1,6 @@
 import * as store from "../src/store";
-import { createMqttSyncWorker } from "../src/mqtt";
+import { createStoreSyncManager } from "../src/storeSync";
+import { createMqttSyncWorker } from "../src/mqttSync";
 import * as automerge from "automerge";
 import { sleep } from "../src/util";
 import * as fs from "fs/promises";
@@ -27,7 +28,9 @@ async function main() {
     const key = (await fs.readFile("./certs/private.key", "utf-8"));
 
     const store = createStore();
-    const worker = await createMqttSyncWorker(store, {
+    const storeSyncManager = createStoreSyncManager(store);
+
+    const worker = await createMqttSyncWorker(storeSyncManager, {
         mqtt: {
             url: "mqtt://a1tgmnye9kxelo-ats.iot.us-west-2.amazonaws.com",
             options: {
@@ -41,10 +44,10 @@ async function main() {
 
     await worker.settled;
     const loadedState = await store.loadObject("1", 5000);
-    console.log(loadedState);
+    console.log("LOADED STATE", loadedState);
     store.commit("1", "increment");
     while (true) {
-        await sleep(5000);
+        await sleep(1000);
         store.commit("1", "increment");
         console.log(store.getState("1"));
     }

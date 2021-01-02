@@ -10,56 +10,46 @@ export interface StoreOptions<T = Record<string, any>> {
     mutations?: Record<string, (state: T, payload?: any) => void>;
 }
 
+export type StoreState<T> = Automerge.FreezeObject<T & {
+    __id__: string;
+    __v__: Automerge.Counter;
+}>;
+
 export interface Store<T> {
     clientId: string;
     events: events.EventEmitter;
+    docSet: Automerge.DocSet<T>;
     createObject: (id: string, initialState?: T) => void;
-    loadObject: (id: string, timeout?: number) => Promise<T>;
+    loadObject: (id: string, timeout?: number) => Promise<StoreState<T>>;
     commit: (id: string, event: string, payload?: Record<string, any>) => void;
     applyChanges: (id: string, changes: any) => void;
-    getState: (id: string) => Automerge.FreezeObject<T & {
-        __v__: Automerge.Counter;
-    }>;
+    getState: (id: string) => StoreState<T>;
 };
 
 export function createStore<T>(options: StoreOptions<T>): Store<T> {
     options.clientId = options.clientId ?? uuid();
     const eventBus = new events.EventEmitter();
-    const objects = new Map<string, Record<string, any>>();
+    const docSet = new Automerge.DocSet<T>();
+    const pendingPromises = new Map<string, ReturnType<typeof externalPromise>>();
 
-    eventBus.on(STORE_OBJECT_LOAD_SUCCESSFUL, function ({ id, stateSave, overwrite }) {
-        const storeObj = objects.get(id);
-        const loadedObject = Automerge.load(stateSave, options.clientId);
 
-        if (!storeObj) {
-            objects.set(id, {
-                state: externalPromiseResolved(loadedObject),
-            });
-            return;
-        }
+    eventBus.on(STORE_OBJECT_LOAD_SUCCESSFUL, function ({ id }) {
+        const state = docSet.getDoc(id);
 
-        if (!storeObj.state.finished) return storeObj.state.resolve(loadedObject);
+        if (!state) throw new Error(`Object Loading: Docset not updated for object id: ${id}`);
 
-        if (!overwrite) throw new Error(`Object ${id} has already been resolved`);
-
-        objects.set(id, {
-            state: externalPromiseResolved(loadedObject),
-        });
+        const pendingPromise = pendingPromises.get(`${STORE_LOAD_OBJECT}_${id}`);
+        pendingPromise?.resolve(state);
     });
 
-    eventBus.on(STORE_OBJECT_LOAD_FAILED, function ({ id, err }) {
-        const storeObj = objects.get(id);
-        if (!storeObj) throw new Error(`Object ${id} was not requested to be loaded`);
-        if (storeObj.state.finished) throw new Error(`Object ${id} has already been resolved`);
-
-        storeObj.state.reject(err);
-    });
+    // eventBus.on(STORE_OBJECT_LOAD_FAILED, function ({ id, err }) {
+    //     cons
+    // });
 
     function getState(id: string) {
-        const storeObj = objects.get(id);
-        if (!storeObj || !storeObj.state.finished) throw new Error(`Object ${id} has not yet resolved`);
-        let state = storeObj.state.value;
-        return state;
+        const state = docSet.getDoc(id);
+        if (!state) throw new Error(`Object ${id} has not yet resolved`);
+        return state as StoreState<T>;
     }
 
     function createObject(id, initialState?: T) {
@@ -68,9 +58,7 @@ export function createStore<T>(options: StoreOptions<T>): Store<T> {
             ...(initialState ?? {} as T),
             ...baseState,
         }, options.clientId);
-        objects.set(id, {
-            state: externalPromiseResolved(state),
-        });
+        docSet.setDoc(id, state);
         eventBus.emit(STORE_CREATE_OBJECT, {
             id,
             state,
@@ -81,17 +69,15 @@ export function createStore<T>(options: StoreOptions<T>): Store<T> {
 
     async function loadObject(id, timeout: number = 2000): Promise<any> {
         const loadPromise = externalPromise();
-        objects.set(id, {
-            state: loadPromise,
-        });
         eventBus.emit(STORE_LOAD_OBJECT, {
             id,
         });
+        pendingPromises.set(`${STORE_LOAD_OBJECT}_${id}`, loadPromise);
 
         return await Promise.race([
             (async () => {
                 await loadPromise.promise;
-                return loadPromise.value;
+                return getState(id);
             })(),
             (async () => {
                 await sleep(timeout);
@@ -101,37 +87,33 @@ export function createStore<T>(options: StoreOptions<T>): Store<T> {
     }
 
     function commit(id: string, event: string, payload?: Record<string, any>) {
-        const storeObj = objects.get(id);
-        if (!storeObj || !storeObj.state.finished) throw new Error(`Object ${id} has not yet resolved`);
-        let state = storeObj.state.value;
+        const oldState = getState(id);
         const mutation = options?.mutations?.[event];
         if (!mutation) return;
 
-        let oldState = state;
-        state = Automerge.change(oldState, event, (doc) => {
+        const newState = Automerge.change(oldState, event, (doc) => {
             mutation(doc as T, payload);
             (doc as any).__v__.increment();
         });
 
-        storeObj.state.value = state;
+        docSet.setDoc(id, newState as StoreState<T>);
         eventBus.emit(STORE_OBJECT_CHANGED, {
             id,
             oldState,
-            newState: state,
+            newState,
         });
     }
 
     function applyChanges(id, changes) {
-        const storeObj = objects.get(id);
-        if (!storeObj || !storeObj.state.finished) throw new Error(`Object ${id} has not yet resolved`);
-        let state = storeObj.state.value;
-        let oldState = state;
-        storeObj.state.value = Automerge.applyChanges(oldState, changes);
+        const oldState = getState(id);
+        const newState = Automerge.applyChanges(oldState, changes);
+        docSet.setDoc(id, newState);
     }
 
     return {
         clientId: options.clientId,
         events: eventBus,
+        docSet,
         createObject,
         loadObject,
         commit,

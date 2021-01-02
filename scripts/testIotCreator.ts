@@ -1,5 +1,6 @@
 import * as store from "../src/store";
-import { createMqttSyncWorker } from "../src/mqtt";
+import { createStoreSyncManager } from "../src/storeSync";
+import { createMqttSyncWorker } from "../src/mqttSync";
 import * as automerge from "automerge";
 import * as fs from "fs/promises";
 
@@ -28,7 +29,10 @@ async function main() {
     const key = (await fs.readFile("./certs/private.key", "utf-8"));
 
     const store = createStore();
-    const worker = await createMqttSyncWorker(store, {
+    const storeSyncManager = createStoreSyncManager(store);
+
+    const worker = await createMqttSyncWorker(storeSyncManager, {
+        allowLoadingOverMqtt: true,
         mqtt: {
             url: "mqtt://a1tgmnye9kxelo-ats.iot.us-west-2.amazonaws.com",
             options: {
